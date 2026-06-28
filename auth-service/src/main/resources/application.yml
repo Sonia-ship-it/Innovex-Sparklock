@@ -1,0 +1,43 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: auth-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/sparklock
+    username: postgres
+    password: Soniauwase@123
+    driver-class-name: org.postgresql.Driver
+  mail:
+    host: smtp.resend.com
+    port: 587
+    username: resend
+    password: re_gXVpSpnw_P64fKVaUVDM5JvcxUmxhFsQJ
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  # Redis config temporarily disabled
+  # data:
+  #   redis:
+  #     host: localhost
+  #     port: 6379
+
+jwt:
+  secret: sparklock-jwt-secret-key-must-be-at-least-256-bits-long-for-hmac-sha
+  expiration-ms: 86400000 # 24 hours
+
+logging:
+  level:
+    com.aloys.auth_service: DEBUG
+    org.springframework.security: INFO
