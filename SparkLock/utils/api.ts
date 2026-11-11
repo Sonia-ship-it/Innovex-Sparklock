@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
-const MACHINE_IP = '10.12.75.148'; // Latest machine IP
+const MACHINE_IP = '10.12.73.78'; // Current Wi-Fi IPv4 address
 const API_BASE_URL = `http://${MACHINE_IP}:8085`;
 const MONITOR_API_BASE_URL = `http://${MACHINE_IP}:3001`;
 const HISTORY_API_BASE_URL = `http://${MACHINE_IP}:8086`;
@@ -10,7 +11,7 @@ const NOTIFY_API_BASE_URL = `http://${MACHINE_IP}:3002`;
  * Robust fetch with timeout to prevent hanging requests in mobile environments.
  */
 async function fetchWithTimeout(url: string, options: any = {}) {
-    const { timeout = 5000 } = options;
+    const { timeout = 10000 } = options;
 
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
@@ -19,8 +20,6 @@ async function fetchWithTimeout(url: string, options: any = {}) {
         const response = await fetch(url, {
             ...options,
             headers: {
-                'Connection': 'keep-alive',
-                'Keep-Alive': 'timeout=5, max=1000',
                 'Cache-Control': 'no-cache',
                 ...(options.headers || {})
             },
@@ -30,8 +29,8 @@ async function fetchWithTimeout(url: string, options: any = {}) {
         return response;
     } catch (error: any) {
         clearTimeout(id);
-        if (error.name === 'AbortError') {
-            throw new Error('Request timed out. Please check your connection.');
+        if (error.name === 'AbortError' || error.message?.includes('canceled') || error.message?.includes('aborted')) {
+            throw new Error(`Cannot reach server (${url}). Make sure the backend is running and on the same Wi-Fi.`);
         }
         throw error;
     }

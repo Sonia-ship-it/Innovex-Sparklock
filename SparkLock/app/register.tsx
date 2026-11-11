@@ -50,9 +50,9 @@ export default function Register() {
 
     const [loading, setLoading] = useState(false);
 
-    const emailRef = useRef<TextInput>(null);
-    const passwordRef = useRef<TextInput>(null);
-    const confirmRef = useRef<TextInput>(null);
+    const emailRef = useRef<any>(null);
+    const passwordRef = useRef<any>(null);
+    const confirmRef = useRef<any>(null);
 
     const handleSignUp = async () => {
         if (!name || !email || !password) {

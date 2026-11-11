@@ -1,12 +1,13 @@
-const { Kafka } = require('kafkajs');
+const { Kafka, logLevel } = require('kafkajs');
 const config = require('../config');
 
 const kafka = new Kafka({
     clientId: 'monitoring-service',
     brokers: config.kafka.brokers,
+    logLevel: logLevel.NOTHING,
     retry: {
         initialRetryTime: 1000,
-        retries: 5,
+        retries: 1,
     },
 });
 

@@ -17,7 +17,7 @@ const DEFAULT_STATE: MonitorState = {
     isSilenced: false,
     thresholds: {
         gas: { warning: 700, critical: 2000 },
-        current: { warning: 0.5, critical: 1.0 },
+        current: { warning: 0.55, critical: 0.70 },
         temperature: { warning: 55, critical: 65 }
     }
 };

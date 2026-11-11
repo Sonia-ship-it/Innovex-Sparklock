@@ -27,7 +27,7 @@ async function triggerNotification(hazardEvent) {
         }
         return false;
     } catch (error) {
-        console.error('[NotificationService] Failed to trigger notification:', error.message);
+        // Optional external notification service — skip silently if not running
         return false;
     }
 }

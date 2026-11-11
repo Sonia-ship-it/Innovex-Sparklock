@@ -47,7 +47,7 @@ export default function Login() {
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
 
-    const passwordRef = useRef<TextInput>(null);
+    const passwordRef = useRef<any>(null);
 
     const handleLogin = async () => {
         if (!email || !password) {

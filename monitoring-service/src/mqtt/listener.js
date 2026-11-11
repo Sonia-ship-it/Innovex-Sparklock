@@ -37,6 +37,15 @@ function startMqttListener() {
         });
 
         client.on('message', async (topic, message) => {
+            // Ignore outbound control/command topics to prevent self-loop parse warnings
+            if (
+                topic.endsWith('/control') ||
+                topic === 'sparklock/command' ||
+                topic === 'SPARKLOCK/command'
+            ) {
+                return;
+            }
+
             const rawMessage = message.toString();
             let data;
 
@@ -44,13 +53,11 @@ function startMqttListener() {
                 data = JSON.parse(rawMessage);
             } catch (parseError) {
                 // Some topics might receive plain text strings like "offline" or "online"
-                // If it's not JSON, we can just skip it or log it
-                if (rawMessage === 'offline' || rawMessage === 'online') {
-                    console.log(`[MQTT] Received status update from topic ${topic}: ${rawMessage}`);
+                if (rawMessage === 'offline' || rawMessage === 'online' || rawMessage === 'ON' || rawMessage === 'OFF') {
                     return;
                 }
 
-                console.error(`[MQTT] Invalid JSON payload from topic ${topic}: ${rawMessage}`);
+                console.warn(`[MQTT] Non-JSON payload from topic ${topic}: ${rawMessage}`);
                 return; // Stop processing this message
             }
 
@@ -63,12 +70,20 @@ function startMqttListener() {
                     (async () => {
                         try {
                             const result = await sensorService.processSensorReading(data);
-                            // Broadcast real-time data to clients
-                            broadcast('pcm_data', { ...data, timestamp: new Date() });
+                            const syncedPayload = {
+                                ...data,
+                                relay: result.record?.relay || data.relay,
+                                buzzer: result.record?.buzzer || data.buzzer,
+                                led: result.record?.led || data.led,
+                                timestamp: result.record?.timestamp || new Date(),
+                                ageSeconds: 0
+                            };
+                            // Broadcast real-time synced data to clients
+                            broadcast('pcm_data', syncedPayload);
 
                             if (result.hazards && result.hazards.length > 0) {
                                 console.log(`[MQTT] Hazards detected:`, result.hazards.map(h => h.type).join(', '));
-                                broadcast('hazard_detected', { hazards: result.hazards, readings: data });
+                                broadcast('hazard_detected', { hazards: result.hazards, readings: syncedPayload });
                             }
                         } catch (err) {
                             console.error(`[MQTT] Error processing PCM sensor data:`, err.message);

@@ -41,7 +41,8 @@
         {
           "photosPermission": "The app needs access to your photos to let you set a profile picture."
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true,

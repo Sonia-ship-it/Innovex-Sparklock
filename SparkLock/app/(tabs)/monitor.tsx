@@ -16,8 +16,8 @@ const X_POINTS = [50, 75, 100, 125, 150, 175, 200, 225, 250, 275, 300, 325];
 const mapToY = (val: number, isCurrent: boolean) => {
     const safeVal = Number.isFinite(val) ? val : 0;
     if (isCurrent) {
-        // Current mapping: 0 -> 190, 2.5 -> 30
-        return Math.max(30, Math.min(190, 190 - (safeVal / 2.5) * 160));
+        // Current mapping: 0 -> 190, 1.3 -> 30
+        return Math.max(30, Math.min(190, 190 - (safeVal / 1.3) * 160));
     } else {
         // Temp mapping: 0 -> 190, 30 -> 30
         return Math.max(30, Math.min(190, 190 - (safeVal / 30) * 160));
@@ -135,7 +135,7 @@ const ChartSection = ({ title, type, c1_y, c2_y, c3_y, t_y, timeLabels }: { titl
                         <G key={i}>
                             <SvgLine x1="50" y1={30 + i * 40} x2="330" y2={30 + i * 40} stroke={isDarkMode ? "#333" : "#EBEBEB"} strokeDasharray="4, 4" strokeWidth="1" />
                             <SvgText x="40" y={34 + i * 40} fontSize="10" fill={isDarkMode ? "#666" : "#8E8E93"} textAnchor="end" fontFamily="System">
-                                {isCurrent ? (2.5 - i * 0.625).toFixed(1) : (30 - i * 7.5).toFixed(1)}
+                                {isCurrent ? (1.3 - i * 0.325).toFixed(2) : (30 - i * 7.5).toFixed(1)}
                             </SvgText>
                         </G>
                     ))}

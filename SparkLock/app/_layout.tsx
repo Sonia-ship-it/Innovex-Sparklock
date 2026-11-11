@@ -22,7 +22,22 @@ import { useCameraAlerts, useMonitorManager } from "../utils/useMonitorData";
 import { useRouter } from "expo-router";
 
 SplashScreen.preventAutoHideAsync();
-LogBox.ignoreLogs(["SafeAreaView has been deprecated"]);
+LogBox.ignoreLogs([
+  "SafeAreaView has been deprecated",
+  "ImageBackground is deprecated",
+]);
+
+const originalWarn = console.warn;
+console.warn = (...args: any[]) => {
+  const msg = typeof args[0] === "string" ? args[0] : "";
+  if (
+    msg.includes("SafeAreaView has been deprecated") ||
+    msg.includes("ImageBackground is deprecated")
+  ) {
+    return;
+  }
+  originalWarn(...args);
+};
 
 function FireAlertHandler({ children }: { children: React.ReactNode }) {
   const alerts = useCameraAlerts();

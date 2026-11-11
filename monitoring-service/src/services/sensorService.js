@@ -47,9 +47,17 @@ async function processSensorReading(data) {
     const hazards = [tempHazard, humHazard, currentHazard].filter(Boolean);
 
     // 2. IMMEDIATE device control: publish command according to current hazards
+    let effectiveRelay = relay;
+    let effectiveBuzzer = buzzer;
+    let effectiveLed = led;
+
     try {
         const { determineDeviceCommand, publishCommand } = require('./commandService');
-        const command = determineDeviceCommand(hazards, deviceId);
+        const command = determineDeviceCommand(hazards, deviceId, { relay, buzzer, led });
+
+        if (command.relay) effectiveRelay = command.relay;
+        if (command.buzzer) effectiveBuzzer = command.buzzer;
+        if (command.led) effectiveLed = command.led;
 
         // Critical safety relay command sent BEFORE DB persistence to avoid any latency
         const result = await publishCommand(command, deviceId);
@@ -66,14 +74,14 @@ async function processSensorReading(data) {
         console.error(`[SensorService] Device control error:`, error.message);
     }
 
-    // 3. Persist to database in background or as final step
+    // 3. Persist to database with the effective alarm/hardware state so system & physical alarm stay in sync
     const record = await insertSensorData({
         temperature,
         humidity,
         current,
-        relay,
-        buzzer,
-        led,
+        relay: effectiveRelay,
+        buzzer: effectiveBuzzer,
+        led: effectiveLed,
         ts
     });
 

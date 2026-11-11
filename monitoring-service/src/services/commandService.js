@@ -9,13 +9,18 @@ const listener = require('../mqtt/listener');
 
 let isBuzzerSilenced = false;
 let isTripped = false;
+let isWarningActive = false;
 
 function setBuzzerSilenced(silenced) {
     isBuzzerSilenced = silenced;
+    if (silenced) {
+        isWarningActive = false;
+    }
 }
 
 function resetTripState() {
     isTripped = false;
+    isWarningActive = false;
     isBuzzerSilenced = false;
 }
 
@@ -23,29 +28,15 @@ function resetTripState() {
  * Determines device control command based on hazard severity
  * 
  * @param {Array} hazards - Array of hazard event objects from rule engine
+ * @param {string} deviceId - Device identifier
+ * @param {Object} incomingState - Current hardware state reported by device ({ buzzer, led, relay })
  * @returns {Object} Command object with led and buzzer properties
- * 
- * Logic:
- * - CRITICAL hazards -> RED LED + buzzer ON + relay OFF
- * - WARNING hazards -> YELLOW LED + buzzer ON (unless silenced)
- * - No hazards -> GREEN LED + buzzer OFF
- * - Multiple hazards -> use highest severity
  */
-function determineDeviceCommand(hazards, deviceId = null) {
+function determineDeviceCommand(hazards, deviceId = null, incomingState = null) {
     const isKcm = deviceId && deviceId.toLowerCase().includes('kcm');
 
-    // Handle empty or null hazards array
-    if (!hazards || hazards.length === 0) {
-        if (isTripped && !isKcm) {
-            let buzzerState = isBuzzerSilenced ? "OFF" : "ON";
-            return { "led": "RED", "buzzer": buzzerState, "relay": "OFF" };
-        }
-        isBuzzerSilenced = false;
-        return { "led": "GREEN", "buzzer": "OFF" };
-    }
-
     // Filter hazards relevant to the device type
-    const relevantHazards = hazards.filter(h => {
+    const relevantHazards = (hazards || []).filter(h => {
         const hSource = h.sensorId.toLowerCase().includes('kcm') ? 'KCM' : 'PCM';
         return isKcm ? hSource === 'KCM' : hSource === 'PCM';
     });
@@ -55,10 +46,19 @@ function determineDeviceCommand(hazards, deviceId = null) {
             let buzzerState = isBuzzerSilenced ? "OFF" : "ON";
             return { "led": "RED", "buzzer": buzzerState, "relay": "OFF" };
         }
+        if (isWarningActive && !isKcm && !isBuzzerSilenced) {
+            return { "led": "YELLOW", "buzzer": "ON" };
+        }
+        // If physical device itself reports buzzer ON and user hasn't silenced it, keep system in sync
+        if (incomingState && incomingState.buzzer === 'ON' && !isBuzzerSilenced) {
+            const activeLed = (incomingState.led && incomingState.led !== 'GREEN') ? incomingState.led : 'YELLOW';
+            return { "led": activeLed, "buzzer": "ON" };
+        }
+        isBuzzerSilenced = false;
         return { "led": "GREEN", "buzzer": "OFF" };
     }
 
-    // Check for CRITICAL hazards
+    // Check for CRITICAL and WARNING hazards
     const hasCriticalHazard = relevantHazards.some(h => h.severity === 'CRITICAL');
     const hasWarningHazard = relevantHazards.some(h => h.severity === 'WARNING');
 
@@ -68,13 +68,18 @@ function determineDeviceCommand(hazards, deviceId = null) {
             isBuzzerSilenced = false; // Reset buzzer silence on fresh trip
         }
         isTripped = true;
+    } else if (hasWarningHazard && !isKcm) {
+        if (!isWarningActive) {
+            isBuzzerSilenced = false; // Reset buzzer silence on new warning
+        }
+        isWarningActive = true;
     }
 
     let buzzerState = isBuzzerSilenced ? "OFF" : "ON";
 
     if (isTripped || hasCriticalHazard) {
         return { "led": "RED", "buzzer": buzzerState, "relay": "OFF" };
-    } else if (hasWarningHazard) {
+    } else if (isWarningActive || hasWarningHazard) {
         return { "led": "YELLOW", "buzzer": buzzerState };
     } else {
         return { "led": "GREEN", "buzzer": "OFF" };

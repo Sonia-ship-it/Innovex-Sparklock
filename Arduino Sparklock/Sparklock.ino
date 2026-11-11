@@ -22,8 +22,8 @@
 #define LCD_SCL       D7          // GPIO13
 
 // ===================== WIFI & MQTT CONFIG =====================
-const char* ssid         = "RCA-OFFICE";
-const char* password     = "RCA@2024";
+const char* ssid         = "Board Room-5Ghz";
+const char* password     = "Meeting@2024";
 const char* mqtt_server  = "test.mosquitto.org";
 const uint16_t MQTT_PORT = 1883;
 const uint32_t WIFI_TIMEOUT_MS = 30000;

@@ -1,4 +1,4 @@
-import { Tabs } from "expo-router";
+import { Tabs, usePathname } from "expo-router";
 import { BarChart2, Cpu, FileUp, Home, Settings } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Dimensions, StyleSheet, TouchableOpacity, View, Modal, Text } from "react-native";
@@ -26,13 +26,20 @@ const AnimatedG = Animated.createAnimatedComponent(G);
 
 import { withSpring } from "react-native-reanimated";
 
-const TabItem = React.memo(({ route, index, activeIndex, navigation, PRIMARY_COLOR }: any) => {
+const TabItem = React.memo(({ route, index, activeIndex, navigation, emitter, navigateToTab, PRIMARY_COLOR }: any) => {
     const isFocused = activeIndex === index;
 
     const onPress = () => {
-        const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+        const emitFn = emitter?.emit ?? navigation?.emit;
+        const event = emitFn
+            ? emitFn({ type: 'tabPress', target: route.key, canPreventDefault: true })
+            : { defaultPrevented: false };
         if (!isFocused && !event.defaultPrevented) {
-            navigation.navigate(route.name);
+            if (navigateToTab) {
+                navigateToTab(route.key);
+            } else if (navigation?.navigate) {
+                navigation.navigate(route.name);
+            }
         }
     };
 
@@ -61,7 +68,7 @@ const TabItem = React.memo(({ route, index, activeIndex, navigation, PRIMARY_COL
     );
 });
 
-const CustomTabBar = ({ state, descriptors, navigation }: any) => {
+const CustomTabBar = ({ state, descriptors, navigation, emitter, navigateToTab }: any) => {
     const routesToDisplay = state.routes.slice(0, 5);
     const tabWidth = SCREEN_WIDTH / 5;
     const activeIndex = state.index < 5 ? state.index : 0;
@@ -129,6 +136,8 @@ const CustomTabBar = ({ state, descriptors, navigation }: any) => {
                         index={index}
                         activeIndex={activeIndex}
                         navigation={navigation}
+                        emitter={emitter}
+                        navigateToTab={navigateToTab}
                         PRIMARY_COLOR={PRIMARY_COLOR}
                     />
                 ))}
@@ -138,12 +147,14 @@ const CustomTabBar = ({ state, descriptors, navigation }: any) => {
 };
 
 export default function TabLayout() {
+    const pathname = usePathname();
     const { isDarkMode } = useTheme();
     const { pcmData } = useMonitorData();
     const { isSilenced } = useMonitorStore();
 
-    // Latch onto the backend's persistent RED led state which signifies a tripped alarm
-    const isAlarmActive = pcmData?.led === 'RED' && !isSilenced;
+    // Show global modal on non-Home tabs whenever physical alarm/trip is active
+    const isHomeTab = pathname === "/" || pathname === "/index";
+    const isAlarmActive = !isHomeTab && (pcmData?.led === 'RED' || pcmData?.buzzer === 'ON') && !isSilenced;
 
     const handleSilenceAlarm = async () => {
         monitorStore.setIsSilenced(true);

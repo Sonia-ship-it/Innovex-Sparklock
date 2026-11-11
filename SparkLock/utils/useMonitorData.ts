@@ -5,10 +5,16 @@ import { monitorStore, useMonitorStore } from './monitorStore';
 
 // Global socket instance for singleton connection
 let socket: Socket | null = null;
+let currentSocketUrl: string | null = null;
 
 const getSocket = () => {
+    const socketUrl = MONITOR_API_BASE_URL.replace('/monitor', '');
+    if (socket && currentSocketUrl !== socketUrl) {
+        socket.disconnect();
+        socket = null;
+    }
     if (!socket) {
-        const socketUrl = MONITOR_API_BASE_URL.replace('/monitor', '');
+        currentSocketUrl = socketUrl;
         socket = io(socketUrl, {
             transports: ['websocket'],
             reconnectionAttempts: 5,
@@ -19,6 +25,9 @@ const getSocket = () => {
 
         socket.on('pcm_data', (data) => {
             monitorStore.setPcmData(data);
+            const currentHistory = monitorStore.getState().history || [];
+            const nextHistory = [...currentHistory, data].slice(-12);
+            monitorStore.setHistory(nextHistory);
         });
 
         socket.on('kcm_data', (data) => {
@@ -70,7 +79,7 @@ export function useMonitorManager() {
         fetchHistory();
 
         const pollInterval = setInterval(refreshData, 3000);
-        const historyInterval = setInterval(fetchHistory, 30000);
+        const historyInterval = setInterval(fetchHistory, 5000);
 
         return () => {
             clearInterval(pollInterval);

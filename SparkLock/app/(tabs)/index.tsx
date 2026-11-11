@@ -2,7 +2,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { AlertCircle, Flame, Thermometer, User, Zap, X } from "lucide-react-native";
 import { useCallback, useState, useEffect, useMemo, useRef } from "react";
 import { Image, ScrollView, Text, TouchableOpacity, View, Alert } from "react-native";
-import { Audio } from "expo-av";
+import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../utils/themeContext";
 import { monitorStore, useMonitorStore } from "../../utils/monitorStore";
@@ -16,16 +16,17 @@ export default function HomeDashboard() {
     const insets = useSafeAreaInsets();
     const user = useUser();
     const { isDarkMode } = useTheme();
-    const soundRef = useRef<Audio.Sound | null>(null);
+    const soundRef = useRef<any>(null);
     const wasHazardous = useRef(false);
     const wasCritical = useRef(false);
+    const wasPhysicalBuzzerOn = useRef(false);
 
     const { pcmData, kcmData } = useMonitorData();
     const store = useMonitorStore();
     const globalIsSilenced = store.isSilenced;
 
     // Memoize safety calculations for speed
-    const { isHazardous, isCritical, isWarning, isOnline, currentMag, isPcmFresh, isKcmFresh, isFireSafe, isElectricalSafe } = useMemo(() => {
+    const { isHazardous, isCritical, isWarning, isOnline, currentMag, isPcmFresh, isKcmFresh, isFireSafe, isElectricalSafe, isPhysicalAlarmOn } = useMemo(() => {
         const pcmFresh = pcmData && (pcmData.ageSeconds === undefined || pcmData.ageSeconds < 300);
         const kcmFresh = kcmData && (kcmData.ageSeconds === undefined || kcmData.ageSeconds < 300);
         const online = pcmFresh || kcmFresh;
@@ -36,30 +37,52 @@ export default function HomeDashboard() {
         const gasCriticalVal = thresholds?.gas?.critical || 2000;
         const tempWarningVal = thresholds?.temperature?.warning || 55;
         const tempCriticalVal = thresholds?.temperature?.critical || 65;
-        const currentWarningVal = thresholds?.current?.warning || 0.5;
-        const currentCriticalVal = thresholds?.current?.critical || 1.0;
+        const currentWarningVal = thresholds?.current?.warning || 0.55;
+        const currentCriticalVal = thresholds?.current?.critical || 0.70;
 
-        const critical = (pcmFresh && (mag >= currentCriticalVal || pcmData.temperature >= tempCriticalVal || pcmData.led === 'RED')) ||
-            (kcmFresh && (kcmData.flame === 1 || kcmData.gas_value >= gasCriticalVal));
-
-        const warning = !critical && (
-            (pcmFresh && (mag >= currentWarningVal && mag < currentCriticalVal || pcmData.temperature >= tempWarningVal && pcmData.temperature < tempCriticalVal || pcmData.led === 'YELLOW')) ||
-            (kcmFresh && (kcmData.gas_value >= gasWarningVal && kcmData.gas_value < gasCriticalVal))
+        const physicalAlarmOn = Boolean(
+            (pcmFresh && (pcmData.buzzer === 'ON' || pcmData.led === 'RED' || pcmData.led === 'YELLOW')) ||
+            (kcmFresh && (kcmData.buzzer === 'ON' || kcmData.flame === 1))
         );
 
-        const fireSafe = !(kcmFresh && (kcmData.flame === 1 || kcmData.gas_value >= gasWarningVal));
-        const electricalSafe = !(pcmFresh && (mag >= currentWarningVal || pcmData.temperature >= tempWarningVal));
+        const critical = Boolean(
+            (pcmFresh && (
+                mag >= currentCriticalVal ||
+                pcmData.temperature >= tempCriticalVal ||
+                pcmData.led === 'RED' ||
+                (pcmData.buzzer === 'ON' && pcmData.relay === 'OFF')
+            )) ||
+            (kcmFresh && (kcmData.flame === 1 || kcmData.gas_value >= gasCriticalVal))
+        );
+
+        const warning = Boolean(!critical && (
+            (pcmFresh && (
+                (mag >= currentWarningVal && mag < currentCriticalVal) ||
+                (pcmData.temperature >= tempWarningVal && pcmData.temperature < tempCriticalVal) ||
+                pcmData.led === 'YELLOW' ||
+                pcmData.buzzer === 'ON'
+            )) ||
+            (kcmFresh && (
+                (kcmData.gas_value >= gasWarningVal && kcmData.gas_value < gasCriticalVal) ||
+                kcmData.gas_detected === true ||
+                kcmData.buzzer === 'ON'
+            ))
+        ));
+
+        const fireSafe = !(kcmFresh && (kcmData.flame === 1 || kcmData.gas_detected === true || kcmData.gas_value >= gasWarningVal));
+        const electricalSafe = !(pcmFresh && (mag >= currentWarningVal || pcmData.temperature >= tempWarningVal || pcmData.led === 'RED' || pcmData.led === 'YELLOW' || pcmData.buzzer === 'ON'));
 
         return {
             isCritical: critical,
             isWarning: warning,
-            isHazardous: critical || warning,
+            isHazardous: critical || warning || physicalAlarmOn,
             isOnline: online,
             currentMag: mag,
             isPcmFresh: pcmFresh,
             isKcmFresh: kcmFresh,
             isFireSafe: fireSafe,
-            isElectricalSafe: electricalSafe
+            isElectricalSafe: electricalSafe,
+            isPhysicalAlarmOn: physicalAlarmOn
         };
     }, [pcmData, kcmData, store.thresholds]);
 
@@ -67,33 +90,37 @@ export default function HomeDashboard() {
         let isCleaningUp = false;
 
         const manageSound = async () => {
-            // Notification sound should play if there's a hazard AND they haven't silenced it yet
+            // Notification sound plays if there's a hazard or physical alarm AND user hasn't silenced it yet
             const shouldPlay = isHazardous && !globalIsSilenced;
 
             if (shouldPlay) {
                 if (!soundRef.current) {
                     try {
-                        const { sound: newSound } = await Audio.Sound.createAsync(
-                            require('../../assets/sound/255181__adamweeden__bs-fire-alarm-sweeping-1-hz.wav'),
-                            { isLooping: true }
+                        await setAudioModeAsync({
+                            playsInSilentMode: true,
+                        });
+                        const player = createAudioPlayer(
+                            require('../../assets/sound/255181__adamweeden__bs-fire-alarm-sweeping-1-hz.wav')
                         );
                         if (isCleaningUp) {
-                            await newSound.unloadAsync();
+                            player.remove();
                             return;
                         }
-                        soundRef.current = newSound;
-                        await newSound.playAsync();
+                        player.loop = true;
+                        player.volume = 1.0;
+                        soundRef.current = player;
+                        player.play();
                     } catch (e) {
-                        console.error("[Audio] Failed to load/play sound:", e);
+                        console.warn("[Audio] Failed to play alarm sound:", e);
                     }
                 }
             } else {
                 if (soundRef.current) {
                     try {
-                        const s = soundRef.current;
+                        const player = soundRef.current;
                         soundRef.current = null;
-                        await s.stopAsync();
-                        await s.unloadAsync();
+                        player.pause();
+                        player.remove();
                     } catch (e) {
                         console.warn("[Audio] Error stopping sound:", e);
                     }
@@ -106,34 +133,43 @@ export default function HomeDashboard() {
         return () => {
             isCleaningUp = true;
             if (soundRef.current) {
-                const s = soundRef.current;
-                soundRef.current = null;
-                s.unloadAsync().catch(() => { });
+                try {
+                    const player = soundRef.current;
+                    soundRef.current = null;
+                    player.pause();
+                    player.remove();
+                } catch {}
             }
         };
     }, [isHazardous, globalIsSilenced]);
+
     useEffect(() => {
         // Reset silenced state if we transition from NO hazard to a hazard,
-        // OR if we escalate from warning to critical!
+        // if we escalate from warning to critical, OR if physical buzzer turns ON!
+        const physicalBuzzerNow = pcmData?.buzzer === 'ON' || kcmData?.buzzer === 'ON';
+        const newPhysicalBuzzer = physicalBuzzerNow && !wasPhysicalBuzzerOn.current;
         const escalated = isCritical && !wasCritical.current;
         const newHazard = isHazardous && !wasHazardous.current;
 
-        if (newHazard || escalated) {
+        if (newHazard || escalated || newPhysicalBuzzer) {
             monitorStore.setIsSilenced(false);
         }
         wasHazardous.current = isHazardous;
         wasCritical.current = isCritical;
-    }, [isHazardous, isCritical]);
+        wasPhysicalBuzzerOn.current = physicalBuzzerNow;
+    }, [isHazardous, isCritical, pcmData?.buzzer, kcmData?.buzzer]);
 
 
     const handleSilence = () => {
         // 1. Instant local silence
         monitorStore.setIsSilenced(true);
         if (soundRef.current) {
-            const s = soundRef.current;
-            soundRef.current = null;
-            s.stopAsync().catch(() => { });
-            s.unloadAsync().catch(() => { });
+            try {
+                const player = soundRef.current;
+                soundRef.current = null;
+                player.pause();
+                player.remove();
+            } catch {}
         }
 
         // Optimistically update the buzzer state in the UI
@@ -293,16 +329,6 @@ export default function HomeDashboard() {
                         <Text className={`${isDarkMode ? "text-gray-300" : "text-[#444]"} text-base font-medium`} style={styles.subtitle}>Indoor Temp</Text>
                     </View>
                     <Text className={`text-xl font-bold ${isDarkMode ? "text-white" : "text-black"}`} style={styles.subtitle}>{pcmData?.temperature?.toFixed(2) ?? '0.00'} <Text className="text-[13px] text-gray-400 font-medium">°C</Text></Text>
-                </View>
-
-                <View className={`${isDarkMode ? "bg-[#1A1A1A] border-[#333]" : "bg-white border-gray-100"} rounded-[20px] shadow-sm border p-5 mb-3 flex-row justify-between items-center`} style={{ elevation: 2 }}>
-                    <View className="flex-row items-center gap-4">
-                        <View className="w-10 h-10 rounded-full bg-[#FAEBE4] items-center justify-center">
-                            <AlertCircle size={20} color="#D66A1F" />
-                        </View>
-                        <Text className={`${isDarkMode ? "text-gray-300" : "text-[#444]"} text-base font-medium`} style={styles.subtitle}>Smoke Level</Text>
-                    </View>
-                    <Text className={`text-xl font-bold ${isDarkMode ? "text-white" : "text-black"}`} style={styles.subtitle}>{kcmData?.gas_value !== undefined ? Number(kcmData.gas_value).toFixed(2) : '0.00'} <Text className="text-[13px] text-gray-400 font-medium">PPM</Text></Text>
                 </View>
 
                 <View className={`${isDarkMode ? "bg-[#1A1A1A] border-[#333]" : "bg-white border-gray-100"} rounded-[20px] shadow-sm border p-5 mb-8 flex-row justify-between items-center`} style={{ elevation: 2 }}>

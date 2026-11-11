@@ -39,7 +39,7 @@ export default function Complete() {
     const route = useRouter();
     const [loc, setLoc] = useState("");
     const [contact, setContact] = useState("");
-    const contactRef = useRef<TextInput>(null);
+    const contactRef = useRef<any>(null);
 
     const handleContinue = () => {
         userStore.setUser({ location: loc, emergencyContact: contact });
