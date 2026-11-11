@@ -587,7 +587,7 @@ router.get('/history', async (req, res) => {
         for (const r of pcmResult.rows) {
             const current = parseFloat(r.current) || 0;
             const temp = parseFloat(r.temperature) || 0;
-            const isHighCurrent = current >= 0.5;
+            const isHighCurrent = current >= 0.55;
             const isHighTemp = temp >= 55;
             const isRedLed = r.led === 'RED';
             const isYellowLed = r.led === 'YELLOW';
@@ -598,7 +598,7 @@ router.get('/history', async (req, res) => {
                 let title = 'Electrical Reading';
                 let message = '';
 
-                if (isRedLed || current >= 0.9 || temp >= 65) {
+                if (isRedLed || current >= 0.70 || temp >= 65) {
                     severity = 'CRITICAL';
                     title = 'Critical Electrical Alert';
                 } else if (isYellowLed || isHighCurrent || isHighTemp) {
