@@ -9,18 +9,13 @@ const listener = require('../mqtt/listener');
 
 let isBuzzerSilenced = false;
 let isTripped = false;
-let isWarningActive = false;
 
 function setBuzzerSilenced(silenced) {
     isBuzzerSilenced = silenced;
-    if (silenced) {
-        isWarningActive = false;
-    }
 }
 
 function resetTripState() {
     isTripped = false;
-    isWarningActive = false;
     isBuzzerSilenced = false;
 }
 
@@ -29,10 +24,9 @@ function resetTripState() {
  * 
  * @param {Array} hazards - Array of hazard event objects from rule engine
  * @param {string} deviceId - Device identifier
- * @param {Object} incomingState - Current hardware state reported by device ({ buzzer, led, relay })
  * @returns {Object} Command object with led and buzzer properties
  */
-function determineDeviceCommand(hazards, deviceId = null, incomingState = null) {
+function determineDeviceCommand(hazards, deviceId = null) {
     const isKcm = deviceId && deviceId.toLowerCase().includes('kcm');
 
     // Filter hazards relevant to the device type
@@ -46,14 +40,6 @@ function determineDeviceCommand(hazards, deviceId = null, incomingState = null) 
             let buzzerState = isBuzzerSilenced ? "OFF" : "ON";
             return { "led": "RED", "buzzer": buzzerState, "relay": "OFF" };
         }
-        if (isWarningActive && !isKcm && !isBuzzerSilenced) {
-            return { "led": "YELLOW", "buzzer": "ON" };
-        }
-        // If physical device itself reports buzzer ON and user hasn't silenced it, keep system in sync
-        if (incomingState && incomingState.buzzer === 'ON' && !isBuzzerSilenced) {
-            const activeLed = (incomingState.led && incomingState.led !== 'GREEN') ? incomingState.led : 'YELLOW';
-            return { "led": activeLed, "buzzer": "ON" };
-        }
         isBuzzerSilenced = false;
         return { "led": "GREEN", "buzzer": "OFF" };
     }
@@ -62,24 +48,19 @@ function determineDeviceCommand(hazards, deviceId = null, incomingState = null) 
     const hasCriticalHazard = relevantHazards.some(h => h.severity === 'CRITICAL');
     const hasWarningHazard = relevantHazards.some(h => h.severity === 'WARNING');
 
-    // Latch trip state if a critical hazard happens on the PCM
+    // Latch trip state ONLY if a critical hazard (>= 0.700A or >= 65°C) happens on the PCM
     if (hasCriticalHazard && !isKcm) {
         if (!isTripped) {
             isBuzzerSilenced = false; // Reset buzzer silence on fresh trip
         }
         isTripped = true;
-    } else if (hasWarningHazard && !isKcm) {
-        if (!isWarningActive) {
-            isBuzzerSilenced = false; // Reset buzzer silence on new warning
-        }
-        isWarningActive = true;
     }
 
     let buzzerState = isBuzzerSilenced ? "OFF" : "ON";
 
     if (isTripped || hasCriticalHazard) {
         return { "led": "RED", "buzzer": buzzerState, "relay": "OFF" };
-    } else if (isWarningActive || hasWarningHazard) {
+    } else if (hasWarningHazard) {
         return { "led": "YELLOW", "buzzer": buzzerState };
     } else {
         return { "led": "GREEN", "buzzer": "OFF" };

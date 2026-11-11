@@ -14,8 +14,8 @@ const THRESHOLDS = {
         unit: 'ppm',
     },
     current: {
-        warning: 0.5,   // A
-        critical: 0.9,  // A (power cut threshold)
+        warning: 0.55,  // A (0.550A warning threshold)
+        critical: 0.70, // A (0.700A danger / power cut threshold)
         unit: 'A',
     },
     gas: {
